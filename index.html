@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Yoyo & Kreik — Loyalty Card</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;800&family=Oxanium:wght@600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="img/logo.jpg">
+<link rel="apple-touch-icon" href="img/logo.jpg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="pole"></div>
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand"><img class="logo" src="img/logo.jpg" alt=""><div class="shop-name wordmark"></div></div>
+    <button class="btn sm ghost lang-toggle"></button>
+  </div>
+
+  <!-- Join -->
+  <section id="join" class="hidden">
+    <div class="hero">
+      <img class="logo big" src="img/logo.jpg" alt="Yoyo & Kreik">
+      <h1 data-i18n="joinTitle"></h1>
+      <p class="lead" data-i18n="joinLead"></p>
+    </div>
+    <form id="joinForm" class="panel" novalidate>
+      <label for="name" data-i18n="name"></label>
+      <input id="name" autocomplete="name" maxlength="60" required>
+      <label for="phone" data-i18n="phone"></label>
+      <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="71 123 456" required>
+      <button class="btn primary block" type="submit" id="joinBtn" data-i18n="getCard"></button>
+      <div class="error" id="joinError"></div>
+    </form>
+  </section>
+
+  <!-- Card -->
+  <section id="cardView" class="hidden">
+    <div class="card">
+      <img class="watermark" src="img/logo.jpg" alt="">
+      <h1 id="hello"></h1>
+      <div class="stamps" id="stamps"></div>
+      <div class="progress-text" id="progress"></div>
+      <div class="muted" id="togo"></div>
+      <div class="reward hidden" id="reward">
+        <strong data-i18n="rewardReady"></strong>
+        <span data-i18n="rewardHint"></span>
+      </div>
+      <div class="qr-box">
+        <div class="qr" id="qr"></div>
+        <p class="muted small" data-i18n="showBarber"></p>
+      </div>
+    </div>
+    <a class="btn primary block hidden" id="book" target="_blank" rel="noopener" data-i18n="book"></a>
+    <div class="muted small" style="margin-top:14px" id="meta"></div>
+    <div class="tip" data-i18n="homeTip"></div>
+    <button class="linkish" id="notYou" data-i18n="notYou"></button>
+  </section>
+
+  <section id="missing" class="hidden">
+    <p class="lead" data-i18n="cardNotFound"></p>
+    <button class="btn primary" id="startOver" data-i18n="getCard"></button>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script src="api.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const MAX = APP_CONFIG.stampsNeeded;
+let token = null;
+let card = null;
+let lastStamps = null;
+let pollTimer = null;
+
+function show(id) {
+  ["join", "cardView", "missing"].forEach(s => $(s).classList.toggle("hidden", s !== id));
+}
+
+function storeToken(tk) {
+  try { tk ? localStorage.setItem("bc_token", tk) : localStorage.removeItem("bc_token"); } catch (e) {}
+}
+
+function renderCard(pop = -1) {
+  const n = Math.min(card.stamps, MAX);
+  $("hello").textContent = t("hello", { name: card.name });
+  renderStamps($("stamps"), n, MAX, pop);
+  $("progress").textContent = t("progress", { n, max: MAX });
+  const full = n >= MAX;
+  $("togo").textContent = full ? "" : t("toGo", { left: MAX - n });
+  $("reward").classList.toggle("hidden", !full);
+  const meta = [t("lastVisit", { date: fmtDate(card.last_visit) })];
+  if (card.rewards_redeemed) meta.push(t("freeCuts", { n: card.rewards_redeemed }));
+  $("meta").textContent = meta.join(" · ");
+}
+
+async function refresh() {
+  try {
+    const c = await API.getCard(token);
+    if (!c) { show("missing"); storeToken(null); return; }
+    const pop = lastStamps !== null && c.stamps > lastStamps ? c.stamps - 1 : -1;
+    const changed = !card || c.stamps !== card.stamps || c.rewards_redeemed !== card.rewards_redeemed;
+    card = c;
+    lastStamps = c.stamps;
+    if (changed) renderCard(pop);
+  } catch (e) { /* offline: keep showing the last card */ }
+}
+
+async function openCard(tk) {
+  token = tk;
+  storeToken(tk);
+  // Keep the token in the URL so bookmarks / home-screen icons open the card
+  history.replaceState(null, "", "?t=" + tk);
+  show("cardView");
+  $("qr").innerHTML = "";
+  new QRCode($("qr"), { text: cardLink(tk), width: 168, height: 168, colorDark: "#000000", colorLight: "#ffffff" });
+  card = null; lastStamps = null;
+  await refresh();
+  clearInterval(pollTimer);
+  pollTimer = setInterval(() => { if (!document.hidden) refresh(); }, 4000);
+}
+
+$("joinForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("joinError").textContent = "";
+  $("joinBtn").disabled = true;
+  $("joinBtn").textContent = t("joining");
+  try {
+    const tk = await API.register($("name").value, $("phone").value, I18N.lang);
+    await openCard(tk);
+  } catch (err) {
+    $("joinError").textContent = err.message === "invalid" ? t("joinError") : t("netError");
+  } finally {
+    $("joinBtn").disabled = false;
+    $("joinBtn").textContent = t("getCard");
+  }
+});
+
+$("notYou").addEventListener("click", () => {
+  clearInterval(pollTimer);
+  storeToken(null);
+  history.replaceState(null, "", location.pathname);
+  show("join");
+});
+$("startOver").addEventListener("click", () => {
+  history.replaceState(null, "", location.pathname);
+  show("join");
+});
+
+document.addEventListener("langchange", () => { if (card) renderCard(); });
+
+if (APP_CONFIG.bookingPhone) {
+  $("book").href = "https://wa.me/" + waNumber(APP_CONFIG.bookingPhone);
+  $("book").classList.remove("hidden");
+}
+
+I18N.apply();
+showDemoBanner();
+
+const urlToken = new URLSearchParams(location.search).get("t");
+let saved = null;
+try { saved = localStorage.getItem("bc_token"); } catch (e) {}
+if (urlToken || saved) openCard(urlToken || saved);
+else show("join");
+</script>
+</body>
+</html>

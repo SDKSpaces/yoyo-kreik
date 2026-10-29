@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="robots" content="noindex">
+<title>Yoyo & Kreik — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;800&family=Oxanium:wght@600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="img/logo.jpg">
+<link rel="apple-touch-icon" href="img/logo.jpg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="pole"></div>
+<div class="wrap wide">
+  <div class="topbar">
+    <div class="brand">
+      <img class="logo" src="img/logo.jpg" alt="">
+      <div>
+        <div class="shop-name wordmark"></div>
+        <div class="muted small" data-i18n="barberTitle"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn sm ghost lang-toggle"></button>
+      <button class="btn sm ghost hidden" id="signOut" data-i18n="signOut"></button>
+    </div>
+  </div>
+
+  <!-- Login -->
+  <section id="login" class="hidden" style="max-width:420px;margin:0 auto">
+    <form id="loginForm" class="panel">
+      <h2 data-i18n="barberTitle"></h2>
+      <label for="email" data-i18n="email"></label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="pw" data-i18n="password"></label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+      <button class="btn primary block" type="submit" data-i18n="signIn"></button>
+      <div class="error" id="loginError"></div>
+    </form>
+  </section>
+
+  <!-- Dashboard -->
+  <section id="dash" class="hidden">
+    <div class="stats">
+      <div class="stat"><b id="sCustomers">0</b><span data-i18n="statCustomers"></span></div>
+      <div class="stat"><b id="sMonth">0</b><span data-i18n="statMonth"></span></div>
+      <div class="stat"><b id="sFree">0</b><span data-i18n="statFree"></span></div>
+    </div>
+
+    <div class="actions-row">
+      <button class="btn primary" id="scanBtn" data-i18n="scan"></button>
+      <button class="btn" id="newBtn" data-i18n="addCustomer"></button>
+      <input id="search" type="search" data-i18n-ph="searchPh">
+    </div>
+
+    <div id="reader" class="hidden"></div>
+
+    <form id="newForm" class="panel hidden" style="margin-bottom:16px" novalidate>
+      <h2 data-i18n="addCustomer"></h2>
+      <label for="nName" data-i18n="name"></label>
+      <input id="nName" maxlength="60">
+      <label for="nPhone" data-i18n="phone"></label>
+      <input id="nPhone" type="tel" inputmode="tel" placeholder="71 123 456">
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn primary" type="submit" data-i18n="add"></button>
+        <button class="btn" type="button" id="newCancel" data-i18n="cancel"></button>
+      </div>
+      <div class="error" id="newError"></div>
+    </form>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="all"><span data-i18n="tabAll"></span><span class="count" id="cAll"></span></button>
+      <button class="tab" data-tab="due"><span data-i18n="tabDue"></span><span class="count" id="cDue"></span></button>
+      <button class="tab" data-tab="ready"><span data-i18n="tabReady"></span><span class="count" id="cReady"></span></button>
+    </div>
+    <div class="list" id="list"></div>
+
+    <p style="margin-top:24px"><a class="btn sm ghost" href="poster.html" target="_blank" data-i18n="poster"></a></p>
+  </section>
+</div>
+
+<!-- Customer sheet -->
+<div class="sheet-backdrop hidden" id="sheetBg">
+  <div class="sheet" role="dialog" aria-modal="true">
+    <div class="sheet-head">
+      <div>
+        <h2 id="shName" style="margin:0"></h2>
+        <div class="phone" id="shPhone"></div>
+      </div>
+      <button class="btn sm ghost" id="shClose" data-i18n="close"></button>
+    </div>
+    <div class="stamps" id="shStamps"></div>
+    <div class="progress-text" id="shProgress"></div>
+    <div class="muted small" id="shMeta"></div>
+    <div class="btns">
+      <button class="btn primary wide" id="shStamp" data-i18n="addStamp"></button>
+      <button class="btn green wide hidden" id="shRedeem" data-i18n="redeem"></button>
+      <a class="btn" id="shWa" target="_blank" rel="noopener" data-i18n="whatsapp"></a>
+      <a class="btn" id="shSend" target="_blank" rel="noopener" data-i18n="sendCard"></a>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="config.js"></script>
+<script src="i18n.js"></script>
+<script src="api.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const MAX = APP_CONFIG.stampsNeeded;
+const DUE = APP_CONFIG.remindAfterDays;
+let customers = [];
+let tab = "all";
+let current = null;
+let scanner = null;
+let busy = false;
+
+function toast(msg, bad = false) {
+  const el = document.createElement("div");
+  el.className = "toast" + (bad ? " bad" : "");
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+// ---------- WhatsApp ----------
+function waLink(c, key) {
+  const lang = c.lang === "en" ? "en" : "ar";
+  const msg = (STRINGS[lang][key])
+    .split("{name}").join(c.name)
+    .split("{shop}").join(APP_CONFIG.shopName[lang] || APP_CONFIG.shopName.en)
+    .split("{n}").join(c.stamps)
+    .split("{max}").join(MAX)
+    .split("{link}").join(cardLink(c.token));
+  return "https://wa.me/" + waNumber(c.phone) + "?text=" + encodeURIComponent(msg);
+}
+
+// ---------- list ----------
+function isDue(c) {
+  const d = daysSince(c.last_visit);
+  return d !== null && d >= DUE;
+}
+function isReady(c) { return c.stamps >= MAX; }
+
+function lastSeen(c) {
+  const d = daysSince(c.last_visit);
+  if (d === null) return t("never");
+  return d === 0 ? t("today") : t("daysAgo", { d });
+}
+
+function renderList() {
+  const q = $("search").value.trim().toLowerCase();
+  const qDigits = q.replace(/\D/g, "");
+  let rows = customers;
+  if (tab === "due") rows = rows.filter(isDue).sort((a, b) => new Date(a.last_visit) - new Date(b.last_visit));
+  if (tab === "ready") rows = rows.filter(isReady);
+  if (q) rows = rows.filter(c => c.name.toLowerCase().includes(q) || (qDigits && c.phone.replace(/\D/g, "").includes(qDigits)));
+
+  $("cAll").textContent = customers.length;
+  $("cDue").textContent = customers.filter(isDue).length;
+  $("cReady").textContent = customers.filter(isReady).length;
+
+  const list = $("list");
+  list.innerHTML = "";
+  if (!rows.length) {
+    const p = document.createElement("p");
+    p.className = "muted";
+    p.textContent = t("noCustomers");
+    list.appendChild(p);
+    return;
+  }
+  for (const c of rows) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const who = document.createElement("div");
+    who.className = "who";
+    const b = document.createElement("b");
+    b.textContent = c.name;
+    const s = document.createElement("span");
+    s.textContent = lastSeen(c);
+    who.append(b, s);
+    const pill = document.createElement("span");
+    pill.className = "pill" + (isReady(c) ? " full" : "");
+    pill.textContent = Math.min(c.stamps, MAX) + " / " + MAX;
+    row.append(who, pill);
+    if (tab === "due") {
+      const wa = document.createElement("a");
+      wa.className = "btn sm green";
+      wa.textContent = t("whatsapp");
+      wa.target = "_blank";
+      wa.rel = "noopener";
+      wa.href = waLink(c, "remindMsg");
+      wa.addEventListener("click", e => e.stopPropagation());
+      row.appendChild(wa);
+    }
+    row.addEventListener("click", () => openSheet(c));
+    list.appendChild(row);
+  }
+}
+
+async function loadAll() {
+  try {
+    customers = await API.listCustomers();
+    customers.sort((a, b) => new Date(b.last_visit || b.created_at) - new Date(a.last_visit || a.created_at));
+    const monthStart = new Date();
+    monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    $("sCustomers").textContent = customers.length;
+    $("sFree").textContent = customers.reduce((n, c) => n + (c.rewards_redeemed || 0), 0);
+    $("sMonth").textContent = await API.visitsSince(monthStart.toISOString());
+    renderList();
+    if (current) {
+      const fresh = customers.find(c => c.id === current.id);
+      if (fresh) { current = fresh; renderSheet(); }
+    }
+  } catch (e) {
+    toast(t("netError"), true);
+  }
+}
+
+// ---------- customer sheet ----------
+function openSheet(c) {
+  current = c;
+  renderSheet();
+  $("sheetBg").classList.remove("hidden");
+}
+function closeSheet() {
+  current = null;
+  $("sheetBg").classList.add("hidden");
+}
+function renderSheet(pop = -1) {
+  const c = current;
+  const n = Math.min(c.stamps, MAX);
+  $("shName").textContent = c.name;
+  $("shPhone").textContent = c.phone;
+  renderStamps($("shStamps"), n, MAX, pop);
+  $("shProgress").textContent = t("progress", { n, max: MAX });
+  const meta = [t("lastVisit", { date: fmtDate(c.last_visit) })];
+  if (c.rewards_redeemed) meta.push(t("freeCuts", { n: c.rewards_redeemed }));
+  $("shMeta").textContent = meta.join(" · ");
+  $("shStamp").classList.toggle("hidden", n >= MAX);
+  $("shRedeem").classList.toggle("hidden", n < MAX);
+  $("shWa").href = waLink(c, "remindMsg");
+  $("shSend").href = waLink(c, "cardMsg");
+}
+
+function replaceCustomer(c) {
+  const i = customers.findIndex(x => x.id === c.id);
+  if (i >= 0) customers[i] = c; else customers.unshift(c);
+  current = c;
+}
+
+$("shStamp").addEventListener("click", async () => {
+  if (busy || !current) return;
+  const mins = current.last_visit ? Math.floor((Date.now() - new Date(current.last_visit)) / 60000) : null;
+  if (mins !== null && mins < 60 && !confirm(t("recentStamp", { min: mins }))) return;
+  busy = true;
+  try {
+    const c = await API.addStamp(current.id);
+    replaceCustomer(c);
+    renderSheet(c.stamps - 1);
+    toast(t("stamped"));
+    loadAll();
+  } catch (e) {
+    toast(e.message === "full" ? t("cardFull") : t("netError"), true);
+  } finally { busy = false; }
+});
+
+$("shRedeem").addEventListener("click", async () => {
+  if (busy || !current) return;
+  busy = true;
+  try {
+    const c = await API.redeem(current.id);
+    replaceCustomer(c);
+    renderSheet();
+    toast(t("redeemed"));
+    loadAll();
+  } catch (e) {
+    toast(t("netError"), true);
+  } finally { busy = false; }
+});
+
+$("shClose").addEventListener("click", closeSheet);
+$("sheetBg").addEventListener("click", e => { if (e.target.id === "sheetBg") closeSheet(); });
+
+// ---------- scanning ----------
+function tokenFrom(text) {
+  try { return new URL(text).searchParams.get("t") || text; } catch (e) { return text.trim(); }
+}
+
+async function stopScan() {
+  if (scanner) {
+    try { await scanner.stop(); } catch (e) {}
+    scanner = null;
+  }
+  $("reader").classList.add("hidden");
+  $("scanBtn").textContent = t("scan");
+}
+
+$("scanBtn").addEventListener("click", async () => {
+  if (scanner) return stopScan();
+  $("reader").classList.remove("hidden");
+  $("scanBtn").textContent = t("stopScan");
+  scanner = new Html5Qrcode("reader");
+  try {
+    await scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 230 }, async text => {
+      const tk = tokenFrom(text);
+      await stopScan();
+      await loadAll();
+      const c = customers.find(x => x.token === tk);
+      if (c) openSheet(c); else toast(t("notFound"), true);
+    });
+  } catch (e) {
+    scanner = null;
+    stopScan();
+    toast(t("scanError"), true);
+  }
+});
+
+// ---------- new customer ----------
+$("newBtn").addEventListener("click", () => {
+  $("newForm").classList.toggle("hidden");
+  $("nName").focus();
+});
+$("newCancel").addEventListener("click", () => $("newForm").classList.add("hidden"));
+$("newForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("newError").textContent = "";
+  try {
+    const tk = await API.register($("nName").value, $("nPhone").value, I18N.lang);
+    $("newForm").reset();
+    $("newForm").classList.add("hidden");
+    await loadAll();
+    const c = customers.find(x => x.token === tk);
+    if (c) openSheet(c);
+  } catch (err) {
+    $("newError").textContent = err.message === "invalid" ? t("joinError") : t("netError");
+  }
+});
+
+// ---------- tabs / search ----------
+$("tabs").addEventListener("click", e => {
+  const b = e.target.closest(".tab");
+  if (!b) return;
+  tab = b.dataset.tab;
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x === b));
+  renderList();
+});
+$("search").addEventListener("input", renderList);
+document.addEventListener("langchange", () => {
+  renderList();
+  if (current) renderSheet();
+  $("scanBtn").textContent = t(scanner ? "stopScan" : "scan");
+});
+
+// ---------- auth ----------
+async function enterDash() {
+  $("login").classList.add("hidden");
+  $("dash").classList.remove("hidden");
+  $("signOut").classList.toggle("hidden", API.demo);
+  await loadAll();
+  setInterval(() => { if (!document.hidden && !current) loadAll(); }, 30000);
+}
+
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("loginError").textContent = "";
+  try {
+    await API.signIn($("email").value.trim(), $("pw").value);
+    enterDash();
+  } catch (err) {
+    $("loginError").textContent = t("signInError");
+  }
+});
+$("signOut").addEventListener("click", async () => {
+  await API.signOut();
+  location.reload();
+});
+
+I18N.apply();
+showDemoBanner();
+API.isSignedIn().then(ok => ok ? enterDash() : $("login").classList.remove("hidden"));
+</script>
+</body>
+</html>
