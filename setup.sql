@@ -24,6 +24,11 @@ create table if not exists visits (
 );
 
 -- Only the signed-in barber can read or change data directly.
+-- (Explicit grants so this works whether or not "expose new tables" is enabled.)
+revoke all on customers, visits from anon;
+grant select, insert, update, delete on customers, visits to authenticated;
+grant usage, select on sequence visits_id_seq to authenticated;
+
 alter table customers enable row level security;
 alter table visits enable row level security;
 
