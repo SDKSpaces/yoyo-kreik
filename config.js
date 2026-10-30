@@ -3,7 +3,7 @@ window.APP_CONFIG = {
   shopName: { en: "Yoyo & Kreik", ar: "يويو وكريك" },
 
   // Reservations number (shown as a "Book" button on the customer card). Leave empty to hide.
-  bookingPhone: "71181512",
+  bookingPhone: "71233951",
 
   // Stamps needed for a free haircut
   stampsNeeded: 10,

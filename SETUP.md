@@ -21,7 +21,7 @@ Until you finish step 2, the app runs in **demo mode**: everything works, but th
 `config.js` is already set up for Yoyo & Kreik:
 
 - `shopName` — "Yoyo & Kreik" / "يويو وكريك"
-- `bookingPhone` — `71181512`, the reservations number from their Instagram. It powers the "Book your next cut" WhatsApp button.
+- `bookingPhone` — `71233951`, the shop's WhatsApp number for bookings. It powers the "Book your next cut" WhatsApp button.
 - `countryCode` — `961` (Lebanon), so numbers like `71 123 456` work in WhatsApp links.
 
 **Logo:** `img/logo.jpg` is the Instagram profile picture, which is only 150×150 pixels. For a sharp printed poster, ask your friend for the original logo file and save it over `img/logo.jpg`. Keep the same name; a square PNG or JPG of at least 600×600 works best.
