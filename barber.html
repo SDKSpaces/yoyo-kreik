@@ -372,7 +372,8 @@ $("loginForm").addEventListener("submit", async e => {
     await API.signIn($("email").value.trim(), $("pw").value);
     enterDash();
   } catch (err) {
-    $("loginError").textContent = t("signInError");
+    const code = err && (err.code || err.error_code);
+    $("loginError").textContent = code === "email_not_confirmed" ? t("notConfirmed") : code === "invalid_credentials" ? t("signInError") : t("netError") + " (" + (err && err.message || "") + ")";
   }
 });
 $("signOut").addEventListener("click", async () => {
