@@ -68,10 +68,40 @@ const API = (() => {
       save(db);
       return c;
     },
+    async undoLast(id) {
+      const db = load();
+      const c = db.customers.find(x => x.id === id);
+      const mine = db.visits.filter(v => v.customer_id === id).sort((a, b) => b.created_at.localeCompare(a.created_at));
+      if (!c || !mine.length) throw new Error("nothing");
+      db.visits.splice(db.visits.indexOf(mine[0]), 1);
+      Object.assign(c, undoPatch(c, mine));
+      save(db);
+      return c;
+    },
+    async deleteCustomer(id) {
+      const db = load();
+      db.customers = db.customers.filter(x => x.id !== id);
+      db.visits = db.visits.filter(v => v.customer_id !== id);
+      save(db);
+    },
     async visitsSince(iso) {
       return load().visits.filter(v => v.kind === "stamp" && v.created_at >= iso).length;
     }
   };
+
+  // Reverse the most recent visit (visits sorted newest first)
+  function undoPatch(c, visits) {
+    const last = visits[0];
+    const patch = { last_visit: visits[1] ? visits[1].created_at : null };
+    if (last.kind === "stamp") {
+      patch.stamps = Math.max(0, c.stamps - 1);
+      patch.total_visits = Math.max(0, c.total_visits - 1);
+    } else {
+      patch.stamps = MAX;
+      patch.rewards_redeemed = Math.max(0, c.rewards_redeemed - 1);
+    }
+    return patch;
+  }
 
   // ---------- Supabase backend ----------
   let sb = null;
@@ -114,6 +144,16 @@ const API = (() => {
       const c = check(await client().rpc("redeem_reward", { p_id: id, p_max: MAX }));
       if (!c || !c.id) throw new Error("not_full");
       return c;
+    },
+    async undoLast(id) {
+      const visits = check(await client().from("visits").select("id,kind,created_at").eq("customer_id", id).order("created_at", { ascending: false }).limit(2));
+      if (!visits.length) throw new Error("nothing");
+      const c = check(await client().from("customers").select("*").eq("id", id).single());
+      check(await client().from("visits").delete().eq("id", visits[0].id));
+      return check(await client().from("customers").update(undoPatch(c, visits)).eq("id", id).select().single());
+    },
+    async deleteCustomer(id) {
+      check(await client().from("customers").delete().eq("id", id));
     },
     async visitsSince(iso) {
       const { count, error } = await client().from("visits").select("id", { count: "exact", head: true }).eq("kind", "stamp").gte("created_at", iso);

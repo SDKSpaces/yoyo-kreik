@@ -101,6 +101,10 @@
       <a class="btn" id="shWa" target="_blank" rel="noopener" data-i18n="whatsapp"></a>
       <a class="btn" id="shSend" target="_blank" rel="noopener" data-i18n="sendCard"></a>
     </div>
+    <div class="sheet-foot">
+      <button class="linkish" id="shUndo" data-i18n="undo"></button>
+      <button class="linkish danger" id="shDelete" data-i18n="deleteCustomer"></button>
+    </div>
   </div>
 </div>
 
@@ -277,6 +281,36 @@ $("shRedeem").addEventListener("click", async () => {
     replaceCustomer(c);
     renderSheet();
     toast(t("redeemed"));
+    loadAll();
+  } catch (e) {
+    toast(t("netError"), true);
+  } finally { busy = false; }
+});
+
+$("shUndo").addEventListener("click", async () => {
+  if (busy || !current) return;
+  if (!confirm(t("confirmUndo", { name: current.name }))) return;
+  busy = true;
+  try {
+    const c = await API.undoLast(current.id);
+    replaceCustomer(c);
+    renderSheet();
+    toast(t("undone"));
+    loadAll();
+  } catch (e) {
+    toast(e.message === "nothing" ? t("nothingToUndo") : t("netError"), true);
+  } finally { busy = false; }
+});
+
+$("shDelete").addEventListener("click", async () => {
+  if (busy || !current) return;
+  if (!confirm(t("confirmDelete", { name: current.name }))) return;
+  busy = true;
+  try {
+    await API.deleteCustomer(current.id);
+    customers = customers.filter(x => x.id !== current.id);
+    closeSheet();
+    toast(t("deleted"));
     loadAll();
   } catch (e) {
     toast(t("netError"), true);

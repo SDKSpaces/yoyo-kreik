@@ -227,6 +227,9 @@ html[dir="rtl"] input[type="tel"] { text-align: right; }
   border-top: 1px solid var(--line);
   padding-top: 14px;
 }
+.sheet-foot { display: flex; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.sheet-foot .linkish { margin-top: 0; }
+.linkish.danger { color: #ff6b6b; }
 .linkish {
   background: none;
   border: none;
