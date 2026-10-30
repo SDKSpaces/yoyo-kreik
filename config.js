@@ -15,8 +15,8 @@ window.APP_CONFIG = {
   // Used to turn local numbers like 71 123 456 into WhatsApp links.
   countryCode: "961",
 
-  // Leave both empty to run in DEMO mode (data stays in this browser only).
+  // Supabase connection (public keys, safe to publish). Empty both for DEMO mode.
   // Fill them in from Supabase -> Project Settings -> API to go live.
-  supabaseUrl: "",
-  supabaseAnonKey: ""
+  supabaseUrl: "https://vutljzpbzwpavfjtgkte.supabase.co",
+  supabaseAnonKey: "sb_publishable_jZM_pa08nQhftkIhY5TAvQ_CitN79Xg"
 };
